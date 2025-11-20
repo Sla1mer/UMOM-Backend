@@ -14,7 +14,7 @@ import cv2
 import crud
 import database
 import utils
-import schemas  # Импортируем схемы
+import schemas
 import torch
 from torchvision import models as tv_models
 from fastapi.middleware.cors import CORSMiddleware
@@ -128,7 +128,6 @@ async def get_all_images(db: AsyncSession = Depends(get_db)):
     ]
 
 
-# НОВЫЙ ЭНДПОИНТ: Статистика детекций
 @app.get("/statistics/detections", response_model=List[schemas.DetectionStatistics])
 async def get_detections_statistics(
         start_date: Optional[str] = Query(None, description="Начальная дата в формате YYYY-MM-DD"),
@@ -153,7 +152,6 @@ async def get_detections_statistics(
     else:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
 
-    # Добавляем время к датам для полного охвата
     start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
 
