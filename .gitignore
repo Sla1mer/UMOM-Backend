@@ -1,0 +1,177 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# FastAPI/Uvicorn specific
+*.pyc
+__pycache__/
+
+# YOLO/ML Models
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
+best.pt
+last.pt
+best19final.pt
+defect_classifier_final.pth
+
+# YOLO runs output
+runs/
+detect/
+train/
+val/
+exp*/
+power_line_*/
+
+# Uploaded files and ROIs
+uploads/
+rois/
+temp/
+
+# Static files (если генерируются)
+static/uploads/
+static/temp/
+
+# Alembic migrations (опционально, если используете)
+# alembic/versions/*.py
+# !alembic/versions/__init__.py
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Type checking
+.pytype/
+
+# Pyre type checker
+.pyre/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Documentation
+docs/_build/
+site/
+
+# Backup files
+*.bak
+*.swp
+*~
+
+# Dataset (если большой)
+dataset/
+dataset_yolo/
+data/
+*.zip
+*.tar.gz
+
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# Ngrok/Tunneling
+ngrok
+ngrok.yml
+*.ngrok.io
+
+# Credentials
+credentials.json
+token.json
+*.key
+*.pem
+*.crt
+
+# MacOS
+.AppleDouble
+.LSOverride
+
+# Windows
+$RECYCLE.BIN/
+Desktop.ini
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
