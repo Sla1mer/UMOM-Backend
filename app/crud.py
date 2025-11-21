@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import func, cast, Date
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 import models
 from sqlalchemy.orm import joinedload
@@ -167,11 +167,8 @@ async def update_repair_request_status(db: AsyncSession, request_id: int, status
         await db.refresh(repair_request)
     return repair_request
 
-async def get_detections_statistics(
-        db: AsyncSession,
-        start_date: datetime,
-        end_date: datetime
-):
+async def get_detections_statistics(db, start_date, end_date):
+    # исходный запрос
     stmt = (
         select(
             cast(models.Detection.created_at, Date).label('date'),
@@ -185,7 +182,26 @@ async def get_detections_statistics(
         .order_by(cast(models.Detection.created_at, Date))
     )
     result = await db.execute(stmt)
-    return result.all()
+    stats = result.all()
+
+    # создать словарь по датам
+    stats_dict = {stat.date: stat.count for stat in stats}
+
+    # сгенерировать полный диапазон дат
+    date_list = []
+    current_date = start_date.date()
+    end_date_only = end_date.date()
+    while current_date <= end_date_only:
+        date_list.append(current_date)
+        current_date += timedelta(days=1)
+
+    # формируем результат с заполнением нулями
+    full_stats = [
+        {'date': d, 'count': stats_dict.get(d, 0)}
+        for d in date_list
+    ]
+
+    return full_stats
 
 async def get_general_statistics(db: AsyncSession):
     total_requests_result = await db.execute(
