@@ -300,10 +300,9 @@ async def get_detections_statistics(
 
     stats = await crud.get_detections_statistics(db, start_dt, end_dt)
 
-    # Теперь stats - это список словарей {'date': ..., 'count': ...}
     return [
         schemas.DetectionStatistics(
-            date=stat['date'],  # Используем dict-доступ вместо атрибутов
+            date=stat['date'],
             count=stat['count']
         )
         for stat in stats
