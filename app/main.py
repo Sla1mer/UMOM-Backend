@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-yolo_model = YOLO("../best19final.pt")
+yolo_model = YOLO("../best.pt")
 
 classif_model = tv_models.resnet18(pretrained=False)
 classif_model.fc = torch.nn.Linear(classif_model.fc.in_features, len(utils.CLASSIF_NAMES))
