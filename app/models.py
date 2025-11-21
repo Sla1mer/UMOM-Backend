@@ -12,6 +12,8 @@ class ImageRecord(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     detections = relationship("Detection", back_populates="image")
+    route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
+    route = relationship("Route", back_populates="images")
 
 class Detection(Base):
     __tablename__ = "detections"
@@ -35,3 +37,10 @@ class RepairRequest(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     detection = relationship("Detection", back_populates="repair_request")
 
+class Route(Base):
+    __tablename__ = "routes"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    images = relationship("ImageRecord", back_populates="route")

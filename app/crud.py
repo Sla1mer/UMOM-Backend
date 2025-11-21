@@ -2,31 +2,62 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import func, cast, Date
-from datetime import datetime, date
-from typing import Optional
+from datetime import datetime
+from typing import Optional, List
 import models
+from sqlalchemy.orm import joinedload
 
+# Создание маршрута
+async def create_route(db: AsyncSession, name: str):
+    route = models.Route(name=name)
+    db.add(route)
+    await db.commit()
+    await db.refresh(route)
+    return route
 
+# Получить все маршруты с количеством изображений
+async def get_all_routes(db: AsyncSession):
+    stmt = (
+        select(models.Route, func.count(models.ImageRecord.id).label("image_count"))
+        .outerjoin(models.Route.images)
+        .group_by(models.Route.id)
+        .order_by(models.Route.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return result.all()
+
+# Создать изображение с указанием route_id
 async def create_image(
         db: AsyncSession,
         file_path: str,
         main_class: str,
-        main_confidence: float
+        main_confidence: float,
+        route_id: Optional[int] = None
 ):
-    """
-    Создать запись изображения БЕЗ GPS (GPS теперь в Detection)
-    """
     image = models.ImageRecord(
         file_path=file_path,
         main_class=main_class,
-        main_confidence=main_confidence
+        main_confidence=main_confidence,
+        route_id=route_id
     )
     db.add(image)
     await db.commit()
     await db.refresh(image)
     return image
 
+# Получить все изображения по route_id
+async def get_images_by_route(db: AsyncSession, route_id: int):
+    stmt = (
+        select(models.ImageRecord)
+        .filter(models.ImageRecord.route_id == route_id)
+        .options(selectinload(models.ImageRecord.detections))
+        .order_by(models.ImageRecord.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
+
+# Оригинальный CRUD для Detection
 async def create_detection(
         db: AsyncSession,
         image_id: int,
@@ -37,9 +68,6 @@ async def create_detection(
         gps_latitude: Optional[float] = None,
         gps_longitude: Optional[float] = None
 ):
-    """
-    Создать Detection с GPS координатами
-    """
     detection = models.Detection(
         image_id=image_id,
         defect_type=defect_type,
@@ -54,15 +82,11 @@ async def create_detection(
     await db.refresh(detection)
     return detection
 
-
 async def update_image_criticality(
         db: AsyncSession,
         image_id: int,
         criticality: int
 ):
-    """
-    Обновить критичность изображения
-    """
     result = await db.execute(
         select(models.ImageRecord).filter(models.ImageRecord.id == image_id)
     )
@@ -75,34 +99,27 @@ async def update_image_criticality(
 
     return image
 
-
 async def get_image(db: AsyncSession, image_id: int):
     result = await db.execute(
         select(models.ImageRecord).filter(models.ImageRecord.id == image_id)
     )
     return result.scalars().first()
 
-
 async def get_detections_by_image(db: AsyncSession, image_id: int):
     stmt = (
         select(models.Detection)
-            .options(selectinload(models.Detection.repair_request))
-            .filter(models.Detection.image_id == image_id)
+        .options(selectinload(models.Detection.repair_request))
+        .filter(models.Detection.image_id == image_id)
     )
     result = await db.execute(stmt)
     return result.scalars().all()
-
 
 async def get_all_images(db: AsyncSession):
     stmt = select(models.ImageRecord).options(selectinload(models.ImageRecord.detections))
     result = await db.execute(stmt)
     return result.scalars().all()
 
-
 async def get_all_detections_with_gps(db: AsyncSession):
-    """
-    Получить все повреждения с GPS координатами для отображения на карте
-    """
     stmt = select(models.Detection).filter(
         models.Detection.gps_latitude.isnot(None),
         models.Detection.gps_longitude.isnot(None)
@@ -110,20 +127,17 @@ async def get_all_detections_with_gps(db: AsyncSession):
     result = await db.execute(stmt)
     return result.scalars().all()
 
-
 async def get_detection(db: AsyncSession, detection_id: int):
     result = await db.execute(
         select(models.Detection).filter(models.Detection.id == detection_id)
     )
     return result.scalars().first()
 
-
 async def get_repair_request_by_detection(db: AsyncSession, detection_id: int):
     result = await db.execute(
         select(models.RepairRequest).filter(models.RepairRequest.detection_id == detection_id)
     )
     return result.scalars().first()
-
 
 async def create_repair_request(db: AsyncSession, detection_id: int):
     repair_request = models.RepairRequest(
@@ -135,18 +149,15 @@ async def create_repair_request(db: AsyncSession, detection_id: int):
     await db.refresh(repair_request)
     return repair_request
 
-
 async def get_all_repair_requests(db: AsyncSession):
     result = await db.execute(select(models.RepairRequest))
     return result.scalars().all()
-
 
 async def get_repair_request_by_id(db: AsyncSession, request_id: int):
     result = await db.execute(
         select(models.RepairRequest).filter(models.RepairRequest.id == request_id)
     )
     return result.scalars().first()
-
 
 async def update_repair_request_status(db: AsyncSession, request_id: int, status: str):
     repair_request = await get_repair_request_by_id(db, request_id)
@@ -155,7 +166,6 @@ async def update_repair_request_status(db: AsyncSession, request_id: int, status
         await db.commit()
         await db.refresh(repair_request)
     return repair_request
-
 
 async def get_detections_statistics(
         db: AsyncSession,
@@ -167,17 +177,15 @@ async def get_detections_statistics(
             cast(models.Detection.created_at, Date).label('date'),
             func.count(models.Detection.id).label('count')
         )
-            .filter(
+        .filter(
             models.Detection.created_at >= start_date,
             models.Detection.created_at <= end_date
         )
-            .group_by(cast(models.Detection.created_at, Date))
-            .order_by(cast(models.Detection.created_at, Date))
+        .group_by(cast(models.Detection.created_at, Date))
+        .order_by(cast(models.Detection.created_at, Date))
     )
-
     result = await db.execute(stmt)
     return result.all()
-
 
 async def get_general_statistics(db: AsyncSession):
     total_requests_result = await db.execute(
@@ -192,19 +200,19 @@ async def get_general_statistics(db: AsyncSession):
 
     open_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
-            .filter(models.RepairRequest.status == "open")
+        .filter(models.RepairRequest.status == "open")
     )
     open_requests = open_requests_result.scalar()
 
     closed_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
-            .filter(models.RepairRequest.status == "closed")
+        .filter(models.RepairRequest.status == "closed")
     )
     closed_requests = closed_requests_result.scalar()
 
     completed_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
-            .filter(models.RepairRequest.status == "completed")
+        .filter(models.RepairRequest.status == "completed")
     )
     completed_requests = completed_requests_result.scalar()
 
@@ -215,3 +223,13 @@ async def get_general_statistics(db: AsyncSession):
         'closed_repair_requests': closed_requests or 0,
         'completed_repair_requests': completed_requests or 0
     }
+
+async def get_detections_gps_by_route(db: AsyncSession, route_id: int):
+    stmt = (
+        select(models.Detection)
+        .join(models.ImageRecord, models.Detection.image_id == models.ImageRecord.id)
+        .filter(models.ImageRecord.route_id == route_id)
+        .options(joinedload(models.Detection.image))
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()

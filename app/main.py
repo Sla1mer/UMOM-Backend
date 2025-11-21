@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from ultralytics import YOLO
@@ -46,7 +46,11 @@ async def get_db():
 
 
 @app.post("/predict/")
-async def predict(files: List[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
+async def predict(
+    files: List[UploadFile] = File(...),
+    route_id: Optional[int] = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
     all_results = []
 
     for file in files:
@@ -83,7 +87,8 @@ async def predict(files: List[UploadFile] = File(...), db: AsyncSession = Depend
             db,
             yolo_img_path,
             main_class_name,
-            max_confidence
+            max_confidence,
+            route_id=route_id
         )
 
         os.makedirs("rois", exist_ok=True)
@@ -129,19 +134,51 @@ async def predict(files: List[UploadFile] = File(...), db: AsyncSession = Depend
     ])
 
 
+@app.post("/routes/", response_model=schemas.RouteResponse)
+async def create_route(route_in: schemas.RouteCreate, db: AsyncSession = Depends(get_db)):
+    route = await crud.create_route(db, route_in.name)
+    return schemas.RouteResponse(
+        id=route.id,
+        name=route.name,
+        created_at=route.created_at,
+        image_count=0
+    )
+
+
+@app.get("/routes/", response_model=List[schemas.RouteResponse])
+async def list_routes(db: AsyncSession = Depends(get_db)):
+    routes = await crud.get_all_routes(db)
+    return [
+        schemas.RouteResponse(
+            id=route.id,
+            name=route.name,
+            created_at=route.created_at,
+            image_count=image_count
+        )
+        for route, image_count in routes
+    ]
+
+
+@app.get("/routes/{route_id}/images", response_model=List[schemas.ImageResponse])
+async def get_images_by_route(route_id: int, db: AsyncSession = Depends(get_db)):
+    images = await crud.get_images_by_route(db, route_id)
+    return [
+        schemas.ImageResponse(
+            image_id=img.id,
+            file_path=img.file_path,
+            main_class=img.main_class,
+            main_confidence=img.main_confidence,
+            criticality=img.criticality,
+            created_at=img.created_at,
+            count_damage=len(img.detections),
+            route_id=img.route_id
+        )
+        for img in images
+    ]
+
+
 @app.get("/detections/map", response_model=List[schemas.DetectionMapPoint])
 async def get_detections_for_map(db: AsyncSession = Depends(get_db)):
-    """
-    Получить все повреждения с GPS координатами для отображения на карте
-
-    Возвращает:
-    - detection_id: ID повреждения
-    - defect_type: Тип повреждения
-    - gps_latitude: Широта
-    - gps_longitude: Долгота
-    - created_at: Дата и время создания
-    - image_id: ID изображения, к которому привязано повреждение
-    """
     detections = await crud.get_all_detections_with_gps(db)
 
     return [
@@ -163,11 +200,6 @@ async def update_image_criticality(
         criticality_update: schemas.ImageCriticalityUpdate,
         db: AsyncSession = Depends(get_db)
 ):
-    """
-    Обновить степень критичности изображения
-
-    - **criticality**: Степень критичности от 1 до 5
-    """
     image = await crud.update_image_criticality(
         db,
         image_id,
@@ -186,7 +218,8 @@ async def update_image_criticality(
         main_confidence=image.main_confidence,
         criticality=image.criticality,
         created_at=image.created_at,
-        count_damage=len(detections)
+        count_damage=len(detections),
+        route_id=image.route_id if hasattr(image, 'route_id') else None
     )
 
 
@@ -201,7 +234,8 @@ async def get_all_images(db: AsyncSession = Depends(get_db)):
             main_confidence=img.main_confidence,
             criticality=img.criticality,
             created_at=img.created_at,
-            count_damage=len(img.detections)
+            count_damage=len(img.detections),
+            route_id=img.route_id if hasattr(img, 'route_id') else None
         )
         for img in images
     ]
@@ -234,7 +268,8 @@ async def get_image_card(image_id: int, db: AsyncSession = Depends(get_db)):
                 created_at=d.created_at
             )
             for d in detections
-        ]
+        ],
+        route_id=image.route_id if hasattr(image, 'route_id') else None
     )
 
 
@@ -315,7 +350,6 @@ async def get_repair_request(detection_id: int, db: AsyncSession = Depends(get_d
         image_id=detection.image_id,
         status=repair_request.status,
         created_at=repair_request.created_at
-
     )
 
 
@@ -347,6 +381,48 @@ async def update_repair_request_status(request_id: int, status: str, db: AsyncSe
         "status": repair_request.status,
         "created_at": repair_request.created_at.isoformat()
     }
+
+@app.get("/routes_with_images/", response_model=List[schemas.RouteWithImages], tags=["Images and Routes"])
+async def get_routes_with_images(db: AsyncSession = Depends(get_db)):
+    routes = await crud.get_all_routes(db)  # возвращает [(route, image_count), ...]
+    result = []
+    for route, _ in routes:
+        images = await crud.get_images_by_route(db, route.id)
+        images_out = [
+            schemas.ImageResponse(
+                image_id=img.id,
+                file_path=img.file_path,
+                main_class=img.main_class,
+                main_confidence=img.main_confidence,
+                criticality=img.criticality,
+                created_at=img.created_at,
+                count_damage=len(img.detections),
+                route_id=img.route_id
+            ) for img in images
+        ]
+        result.append({
+            "name": route.name,
+            "route_id": route.id,
+            "images": images_out
+        })
+    return result
+
+
+@app.get("/routes/{route_id}/detections/map", response_model=List[schemas.DetectionMapPoint], tags=["Detections"])
+async def get_route_detections_map(route_id: int, db: AsyncSession = Depends(get_db)):
+    detections = await crud.get_detections_gps_by_route(db, route_id)
+    return [
+        schemas.DetectionMapPoint(
+            detection_id=d.id,
+            defect_type=d.defect_type,
+            gps_latitude=d.gps_latitude,
+            gps_longitude=d.gps_longitude,
+            created_at=d.created_at,
+            image_id=d.image_id
+        )
+        for d in detections if d.gps_latitude is not None and d.gps_longitude is not None
+    ]
+
 
 
 app.mount("/runs", StaticFiles(directory="runs"), name="runs")
