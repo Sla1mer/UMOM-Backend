@@ -1,5 +1,9 @@
 import os
 import uuid
+from typing import Optional, Tuple
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
+
 import cv2
 import torch
 from PIL import Image
@@ -38,3 +42,61 @@ def save_roi(roi_img):
     roi_path = os.path.join("rois", roi_filename)
     cv2.imwrite(roi_path, roi_img)
     return roi_path
+
+
+def get_gps_from_bytes(image_bytes: bytes) -> Optional[Tuple[float, float]]:
+    """
+    Извлекает GPS координаты из байтов изображения
+
+    Returns:
+        Tuple[float, float]: (latitude, longitude) или None если GPS нет
+    """
+    try:
+        from io import BytesIO
+        image = Image.open(BytesIO(image_bytes))
+        exif_data = image._getexif()
+
+        if not exif_data:
+            return None
+
+        gps_info = {}
+        for tag, value in exif_data.items():
+            tag_name = TAGS.get(tag, tag)
+            if tag_name == 'GPSInfo':
+                for gps_tag in value:
+                    gps_tag_name = GPSTAGS.get(gps_tag, gps_tag)
+                    gps_info[gps_tag_name] = value[gps_tag]
+
+        if not gps_info:
+            return None
+
+        lat = _convert_to_degrees(gps_info.get('GPSLatitude'))
+        lon = _convert_to_degrees(gps_info.get('GPSLongitude'))
+
+        if lat is None or lon is None:
+            return None
+
+        if gps_info.get('GPSLatitudeRef') == 'S':
+            lat = -lat
+        if gps_info.get('GPSLongitudeRef') == 'W':
+            lon = -lon
+
+        return (lat, lon)
+
+    except Exception as e:
+        print(f"Ошибка извлечения GPS из bytes: {e}")
+        return None
+
+
+def _convert_to_degrees(value):
+    """
+    Конвертирует GPS координаты из формата EXIF в десятичные градусы
+    """
+    if not value:
+        return None
+
+    try:
+        d, m, s = value
+        return d + (m / 60.0) + (s / 3600.0)
+    except:
+        return None

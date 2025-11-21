@@ -1,13 +1,21 @@
-# crud.py
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import func, cast, Date
 from datetime import datetime, date
+from typing import Optional
 import models
 
 
-async def create_image(db: AsyncSession, file_path: str, main_class: str, main_confidence: float):
+async def create_image(
+        db: AsyncSession,
+        file_path: str,
+        main_class: str,
+        main_confidence: float
+):
+    """
+    Создать запись изображения БЕЗ GPS (GPS теперь в Detection)
+    """
     image = models.ImageRecord(
         file_path=file_path,
         main_class=main_class,
@@ -25,19 +33,47 @@ async def create_detection(
         defect_type: str,
         yolo_confidence: float,
         classif_confidence: float,
-        roi_path: str
+        roi_path: str,
+        gps_latitude: Optional[float] = None,
+        gps_longitude: Optional[float] = None
 ):
+    """
+    Создать Detection с GPS координатами
+    """
     detection = models.Detection(
         image_id=image_id,
         defect_type=defect_type,
         yolo_confidence=yolo_confidence,
         classif_confidence=classif_confidence,
-        roi_path=roi_path
+        roi_path=roi_path,
+        gps_latitude=gps_latitude,
+        gps_longitude=gps_longitude
     )
     db.add(detection)
     await db.commit()
     await db.refresh(detection)
     return detection
+
+
+async def update_image_criticality(
+        db: AsyncSession,
+        image_id: int,
+        criticality: int
+):
+    """
+    Обновить критичность изображения
+    """
+    result = await db.execute(
+        select(models.ImageRecord).filter(models.ImageRecord.id == image_id)
+    )
+    image = result.scalars().first()
+
+    if image:
+        image.criticality = criticality
+        await db.commit()
+        await db.refresh(image)
+
+    return image
 
 
 async def get_image(db: AsyncSession, image_id: int):
@@ -58,8 +94,19 @@ async def get_detections_by_image(db: AsyncSession, image_id: int):
 
 
 async def get_all_images(db: AsyncSession):
-    # Загружаем изображения с подсчётом детекций
     stmt = select(models.ImageRecord).options(selectinload(models.ImageRecord.detections))
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+async def get_all_detections_with_gps(db: AsyncSession):
+    """
+    Получить все повреждения с GPS координатами для отображения на карте
+    """
+    stmt = select(models.Detection).filter(
+        models.Detection.gps_latitude.isnot(None),
+        models.Detection.gps_longitude.isnot(None)
+    )
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -78,11 +125,10 @@ async def get_repair_request_by_detection(db: AsyncSession, detection_id: int):
     return result.scalars().first()
 
 
-async def create_repair_request(db: AsyncSession, detection_id: int, description: str):
+async def create_repair_request(db: AsyncSession, detection_id: int):
     repair_request = models.RepairRequest(
         detection_id=detection_id,
         status="open",
-        description=description
     )
     db.add(repair_request)
     await db.commit()
@@ -111,15 +157,11 @@ async def update_repair_request_status(db: AsyncSession, request_id: int, status
     return repair_request
 
 
-# НОВАЯ ФУНКЦИЯ: Статистика детекций по датам
 async def get_detections_statistics(
         db: AsyncSession,
         start_date: datetime,
         end_date: datetime
 ):
-    """
-    Получить количество детекций сгруппированных по дате
-    """
     stmt = (
         select(
             cast(models.Detection.created_at, Date).label('date'),
@@ -138,36 +180,28 @@ async def get_detections_statistics(
 
 
 async def get_general_statistics(db: AsyncSession):
-    """
-    Получить общую статистику системы
-    """
-    # Общее количество заявок на ремонт
     total_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
     )
     total_requests = total_requests_result.scalar()
 
-    # Общее количество дефектов
     total_defects_result = await db.execute(
         select(func.count(models.Detection.id))
     )
     total_defects = total_defects_result.scalar()
 
-    # Количество открытых заявок
     open_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
             .filter(models.RepairRequest.status == "open")
     )
     open_requests = open_requests_result.scalar()
 
-    # Количество закрытых заявок
     closed_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
             .filter(models.RepairRequest.status == "closed")
     )
     closed_requests = closed_requests_result.scalar()
 
-    # Количество выполненных заявок
     completed_requests_result = await db.execute(
         select(func.count(models.RepairRequest.id))
             .filter(models.RepairRequest.status == "completed")

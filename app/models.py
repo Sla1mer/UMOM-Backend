@@ -8,6 +8,8 @@ class ImageRecord(Base):
     file_path = Column(String, unique=True, index=True)
     main_class = Column(String, nullable=True)
     main_confidence = Column(Float, nullable=True)
+    criticality = Column(Integer, nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     detections = relationship("Detection", back_populates="image")
 
@@ -19,6 +21,8 @@ class Detection(Base):
     yolo_confidence = Column(Float)
     classif_confidence = Column(Float)
     roi_path = Column(String, nullable=True)
+    gps_latitude = Column(Float, nullable=True)
+    gps_longitude = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     image = relationship("ImageRecord", back_populates="detections")
     repair_request = relationship("RepairRequest", back_populates="detection", uselist=False)
@@ -28,6 +32,6 @@ class RepairRequest(Base):
     id = Column(Integer, primary_key=True, index=True)
     detection_id = Column(Integer, ForeignKey("detections.id"), unique=True, nullable=False)
     status = Column(String, default="open")
-    description = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     detection = relationship("Detection", back_populates="repair_request")
+
